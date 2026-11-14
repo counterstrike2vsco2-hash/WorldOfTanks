@@ -3,8 +3,8 @@
 
 * При старте боя (пока идёт обратный отсчёт) сами появляются BOT_ENEMY_COUNT врагов
   (команда 2) и BOT_ALLY_COUNT союзников (команда 1, рядом с игроком).
-* Враги едут к ближайшей цели (игрок или союзный бот), останавливаются на
-  дистанции BOT_MIN_RANGE..BOT_MAX_RANGE, объезжают препятствия и стреляют.
+* Враги едут к ближайшей/опасной цели (игрок или союзный бот), выбирают дистанцию
+  по классу техники, объезжают препятствия и стреляют.
 * Союзники атакуют вражеских ботов, а если врагов не осталось - держатся рядом с игроком.
 * Урон по своей команде не проходит (см. shooting._applyDamage).
 
@@ -49,7 +49,6 @@ BOT_USE_MATCHMAKER = True       # состав команд подбирает �
 BOT_USE_ROUTES = True          # боты едут по маршрутам (фланги/центр по классу техники), а не все сразу на ближайшего врага
 BOT_SPOT_RANGE = 230.0         # пока едет по маршруту, бот замечает врагов только ближе этой дистанции, м
 BOT_ROUTE_REACH = 20.0         # точка маршрута считается достигнутой на этом расстоянии, м
-BOT_PUSH_AFTER = 0.0         # ПТ сразу выходят на маршрут; САУ остаются на позиции
 BOT_AUTO_END = True            # бой заканчивается сам, когда уничтожена одна из команд
 BOT_AUTO_END_DELAY = 4.0       # пауза перед экраном результатов, сек
 
@@ -75,8 +74,8 @@ BOT_START_WAIT = 15.0          # сколько ждать старта визу
 BOT_ENTITY_WAIT_STEP = 0.1
 BOT_ENTITY_WAIT_TRIES = 150
 
-BOT_MIN_RANGE = 35.0           # ближе этой дистанции враг пятится
-BOT_MAX_RANGE = 70.0           # дальше этой дистанции враг едет к цели
+BOT_MIN_RANGE = 35.0           # запасной ближний предел для неизвестного класса
+BOT_MAX_RANGE = 70.0           # запасной дальний предел для неизвестного класса
 BOT_FOLLOW_MIN = 18.0          # союзник без врагов: держится в этом кольце вокруг игрока
 BOT_FOLLOW_MAX = 40.0
 BOT_SHOOT_DISTANCE = 220.0
@@ -92,6 +91,44 @@ BOT_INACCURACY_BASE = 0.5      # разброс точки прицеливан�
 BOT_INACCURACY_PER_METER = 0.012
 BOT_RELOAD_FACTOR = (1.0, 1.5) # боты перезаряжаются медленнее игрока
 
+# Тактика по классу техники: ПТ-САУ держат дистанцию, лёгкие заходят с фланга,
+# тяжёлые подходят ближе. Диапазон - желаемая дистанция до противника, м.
+BOT_ROLE_RANGE = {
+    'light': (65.0, 110.0),
+    'medium': (45.0, 85.0),
+    'heavy': (35.0, 70.0),
+    'td': (85.0, 140.0),
+}
+
+# Выбор цели: меньшее значение лучше. Низкое HP и уже начатый командой фокус
+# слегка перевешивают дистанцию; бонус текущей цели убирает метания между танками.
+BOT_TARGET_HP_WEIGHT = 45.0
+BOT_TARGET_STICKY_BONUS = 18.0
+BOT_TARGET_FOCUS_BONUS = 2.5
+BOT_TARGET_FOCUS_CAP = 12.0
+BOT_TARGET_ALLY_THREAT_BONUS = 14.0
+BOT_TARGET_ALLY_THREAT_CAP = 28.0
+BOT_TARGET_BASE_DEFENSE_RANGE = 140.0
+BOT_TARGET_BASE_DEFENSE_WEIGHT = 0.20
+
+# Если рядом заметно больше врагов, даже не совсем разбитый танк может отойти.
+BOT_LOCAL_FORCE_RANGE = 65.0
+BOT_LOCAL_FORCE_CHECK_INTERVAL = 1.0
+BOT_RETREAT_OUTNUMBERED_HP = 0.48
+
+# Манёвры во время боя: лёгкие меняют угол атаки, ПТ-САУ после выстрела смещаются.
+BOT_LIGHT_ORBIT_INTERVAL = (3.0, 5.0)
+BOT_LIGHT_ORBIT_STEP = (0.35, 0.75)
+BOT_TD_RELOCATE_INTERVAL = (10.0, 16.0)
+BOT_TD_RELOCATE_ANGLE = (0.25, 0.45)
+BOT_TD_RELOCATE_DURATION = 12.0
+
+# Обычные танковые снаряды: упреждение движения цели с ограничением, чтобы
+# оценка скорости/времени полёта не превращалась в стрельбу далеко впереди.
+BOT_AIM_LEAD_MAX_TIME = 0.45
+BOT_AIM_LEAD_MAX_DISTANCE = 3.5
+BOT_TARGET_SPEED_MAX = 24.0
+
 BOT_PROBE_LENGTH_MIN = 18.0    # дальность "усов" для объезда препятствий, м
 BOT_AVOID_ANGLES = (0.0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1)
 BOT_SPG_RETARGET = (6.0, 14.0)  # арта держит выбранную цель столько секунд, потом выбирает новую случайно среди засвеченных (не только игрока)
@@ -99,14 +136,18 @@ BOT_SPG_THREAT_CHANCE = 0.3     # шанс, что САУ ответит том�
 BOT_SPG_DAMAGE_MULT = 0.7      # урон снаряда САУ-бота относительно паспортного
 BOT_SPG_DAMAGE_CAP = 0.5       # и не больше этой доли максимального здоровья цели (нет ваншотов с полного HP)
 BOT_SPG_RELOAD_MULT = 1.3      # САУ-боты перезаряжаются дольше
-BOT_CAPTURERS_PER_TEAM = 2         # сколько ботов в команде едут захватывать базу противника
-BOT_CAPTURER_CHANCE = 0.3
+BOT_CAPTURERS_PER_TEAM = 1         # максимум один лёгкий танк в команде назначается захватчиком
 _CAPTURERS = {}
 BOT_SPG_HARASS = (14.0, 28.0)  # пока цели нет, САУ раз в столько секунд кидает снаряд по карте (около врагов, с промахом)
 BOT_SPG_COVER = True           # снаряд не долетает до цели под крышей/кроной и за домом на траектории падения
 BOT_SPG_DANGER = 140.0         # враг (засвеченный) ближе этого - арта отъезжает к своей базе
 BOT_SPG_FIGHT = 70.0           # враг ближе этого - арта останавливается, разворачивается и бьёт прямой наводкой
 BOT_SPG_HOME_RADIUS = 9.0      # САУ держится возле стартовой позиции, м
+BOT_TD_TARGET_RANGE = 200.0    # ПТ-САУ не срывается с позиции за слишком далёкой целью
+BOT_TACTICAL_REPOSITION_INTERVAL = 5.0  # пауза между сменами позиции, если цель закрыта укрытием
+BOT_RETREAT_COVER_RADII = (14.0, 26.0)  # расстояния поиска ближайшего укрытия для раненого танка
+BOT_RETREAT_COVER_ANGLES = (0.0, -0.75, 0.75, -1.5, 1.5, math.pi)
+BOT_RETREAT_COVER_MIN_GAIN = 3.0  # укрытие должно быть дальше от угрозы, чем текущее место
 BOT_STUCK_TIME = 1.0           # столько стоим на месте при движении -> считаем, что застряли
 BOT_AVOID_VEHICLES = True      # лучи объезда учитывают чужие танки и остовы (не только статику)
 BOT_AVOID_HYSTERESIS = 4.0     # бонус к выбранной стороне объезда, чтобы бот не метался влево-вправо
@@ -428,7 +469,21 @@ def _vehicleRole(compDescr):
 
 
 _LANES = {}             # team -> оставшиеся "полосы" карты (равномерно по всей ширине, перемешаны)
-LANE_FACTOR = {'light': 1.0, 'medium': 1.0, 'heavy': 0.85, 'td': 0.7}
+# Класс определяет ширину маршрута и глубину выхода: ПТ-САУ остаются в тылу,
+# тяжёлые идут по более центральной линии, лёгкие шире обходят фланги.
+LANE_FACTOR = {'light': 1.30, 'medium': 0.95, 'heavy': 0.40, 'td': 0.65}
+ROLE_ROUTE_STAGES = {
+    'light': (0.18, 0.36, 0.55, 0.70, 0.78),
+    'medium': (0.20, 0.38, 0.54, 0.66),
+    'heavy': (0.18, 0.34, 0.50, 0.58),
+    'td': (0.12, 0.20),
+}
+ROLE_FLANK_RANGE = {
+    'light': (0.95, 1.40),
+    'medium': (0.60, 1.00),
+    'heavy': (0.25, 0.55),
+    'td': (0.25, 0.55),
+}
 
 
 def _mapName():
@@ -450,7 +505,7 @@ def _takeLane(team):
 
 
 def _buildRoute(team, role):
-    """Список точек (x, z): каждый бот идёт в своей полосе по всей ширине карты, затем меняет фланг (не копится в куче)."""
+    """Короткий маршрут по классу: лёгкие разведуют фланг, тяжёлые идут к центру, ПТ-САУ занимают тыловую позицию."""
     a, e = _AXIS.get('ally'), _AXIS.get('enemy')
     if not a or not e:
         return []
@@ -474,7 +529,7 @@ def _buildRoute(team, role):
         stages = (0.18,)
     else:
         lane = _takeLane(team) * LANE_FACTOR.get(role, 1.0)
-        stages = (0.22, 0.42, 0.62, 0.82)
+        stages = ROLE_ROUTE_STAGES.get(role, ROLE_ROUTE_STAGES['medium'])
 
     route = []
 
@@ -488,13 +543,6 @@ def _buildRoute(team, role):
 
     for prog in stages:
         add(prog, lane * width + random.uniform(-25.0, 25.0))
-    if role != 'spg':
-        # до вражеской стороны в своей полосе, потом разворот через центр на противоположный фланг и снова вперёд:
-        # бот объезжает всю карту, а не сидит на базе врага
-        add(0.95, lane * width * 0.8 + random.uniform(-25.0, 25.0))
-        add(0.55, -lane * width * 0.9 + random.uniform(-25.0, 25.0))
-        add(0.90, -lane * width * 0.6 + random.uniform(-25.0, 25.0))
-        add(0.30, lane * width * 0.7 + random.uniform(-25.0, 25.0))
     return route
 
 
@@ -1321,6 +1369,25 @@ class BotAI(object):
         self._retarget = 0.0
         self._aimPoint = None
         self._aimOffset = (0.0, 0.0, 0.0)
+        self._aimTargetID = None
+        self._aimLead = (0.0, 0.0, 0.0)
+        self._targetMotion = None   # (vehicleID, time, x, z, vx, vz) для редкого fallback без физики
+        self._tacticalTargetID = None
+        self._tacticalAngle = None
+        self._repositionAt = 0.0
+        self._retreatUntil = 0.0
+        self._retreatDone = False
+        self._retreatGoal = None
+        self._localForceCheckAt = 0.0
+        self._localOutnumbered = False
+        self._orbitTargetID = None
+        self._orbitUntil = 0.0
+        self._orbitSign = random.choice((-1.0, 1.0))
+        self._tdRelocateGoal = None
+        self._tdRelocateTargetID = None
+        self._tdRelocateUntil = 0.0
+        self._tdRelocateAt = 0.0
+        self._tdRelocateSign = random.choice((-1.0, 1.0))
 
         self._holdMode = 0
         self._holdUntil = 0.0
@@ -1546,9 +1613,11 @@ class BotAI(object):
         return BOT_USE_ROUTES and bool(_AXIS)
 
     def _spotLimit(self):
-        """Дальность обнаружения врагов, пока бот занят маршрутом/обороной; None - атакует любого."""
+        """Дальность обнаружения целей: ПТ-САУ не бросает позицию ради слишком далёкой цели."""
         if self.role == 'spg':
             return BOT_SPG_RANGE          # САУ видит врагов по всей дальности огня
+        if self.role == 'td':
+            return BOT_TD_TARGET_RANGE
         if not self._routeOn():
             return None
         if self._route is None:
@@ -1556,12 +1625,10 @@ class BotAI(object):
             self._routeIdx = 0
         if self._routeIdx < len(self._route):
             return BOT_SPOT_RANGE
-        if self.role in ('spg', 'td') and BigWorld.time() - self._battleStart < BOT_PUSH_AFTER:
-            return BOT_SPOT_RANGE * 1.3
         return None
 
     def _searchGoal(self, pos):
-        if self.role == 'spg' or not self._routeOn():
+        if self.role in ('spg', 'td') or not self._routeOn():
             return None
         best = None
         for v in self._enemies(False):
@@ -1580,8 +1647,6 @@ class BotAI(object):
             off = self._goalOff = (math.cos(a) * r, math.sin(a) * r)
         return goal[0] + off[0], goal[1] + off[1]
 
-    _retreatUntil = 0.0
-    _retreatDone = False
     capturer = False
 
     def _captureGoal(self, pos):
@@ -1592,8 +1657,42 @@ class BotAI(object):
         except Exception:
             return None
 
-    def _retreating(self, veh, pos, now):
-        """Бот с малым запасом прочности (<30%) один раз за бой отходит к базе на ~12 с (если рядом не его база)."""
+    def _isLocallyOutnumbered(self, pos, now):
+        """Сравнивает силы рядом: считаем только союзников и замеченных врагов в радиусе."""
+        if now < self._localForceCheckAt:
+            return self._localOutnumbered
+        allies = 1                         # сам бот
+        enemies = 0
+        for ally in _BOTS.values():
+            if ally is self or not ally.alive or ally.team != self.team:
+                continue
+            try:
+                other = ally.vehicle()
+                if other is not None and isAlive(other):
+                    p = _posOf(other)
+                    if math.hypot(p.x - pos.x, p.z - pos.z) <= BOT_LOCAL_FORCE_RANGE:
+                        allies += 1
+            except Exception:
+                continue
+        if self.team == TEAM_ALLY:
+            player = _getPlayerVehicle()
+            if player is not None and isAlive(player):
+                p = _posOf(player)
+                if math.hypot(p.x - pos.x, p.z - pos.z) <= BOT_LOCAL_FORCE_RANGE:
+                    allies += 1
+        try:
+            for enemy in self._enemies():
+                p = _posOf(enemy)
+                if math.hypot(p.x - pos.x, p.z - pos.z) <= BOT_LOCAL_FORCE_RANGE:
+                    enemies += 1
+        except Exception:
+            pass
+        self._localForceCheckAt = now + BOT_LOCAL_FORCE_CHECK_INTERVAL
+        self._localOutnumbered = enemies > allies
+        return self._localOutnumbered
+
+    def _retreating(self, veh, pos, now, target=None):
+        """Раненый или окружённый бот отходит за ближайшее укрытие, если оно найдено, или к базе."""
         if self.role == 'spg' or self._follow:
             return False
         if now < self._retreatUntil:
@@ -1604,15 +1703,36 @@ class BotAI(object):
             frac = float(veh.health) / float(veh.typeDescriptor.maxHealth)
         except Exception:
             return False
-        if frac < 0.30:
+        outnumbered = (frac >= 0.30 and frac < BOT_RETREAT_OUTNUMBERED_HP and
+                       self._isLocallyOutnumbered(pos, now))
+        if frac < 0.30 or outnumbered:
             self._retreatDone = True
             if random.random() < 0.75:
                 self._retreatUntil = now + random.uniform(10.0, 15.0)
-                LOG_DEBUG('[BOTS] bot %s retreats (hp %.0f%%)' % (self.botID, frac * 100.0))
+                if target is None and self._threatID is not None and now < self._threatUntil:
+                    try:
+                        threat = BigWorld.entity(self._threatID)
+                        if threat is not None and isAlive(threat) and getTeam(threat) != self.team:
+                            target = threat
+                    except Exception:
+                        target = None
+                self._retreatGoal = self._findRetreatCover(pos, target, now) if target is not None else None
+                self._navForce = True
+                reason = 'outnumbered' if outnumbered else 'low hp'
+                LOG_DEBUG('[BOTS] bot %s retreats (%s, hp %.0f%%, cover=%s)' % (
+                    self.botID, reason, frac * 100.0, self._retreatGoal is not None))
                 return True
         return False
 
     _losCache = (0.0, True, None)
+
+    def _rayClear(self, spaceID, start, end):
+        """Проверяет прямой луч между двумя точками; при ошибке не считает место укрытием."""
+        try:
+            hit = BigWorld.wg_collideSegment(spaceID, start, end, 0)
+            return hit is None or hit[0] is None
+        except Exception:
+            return True
 
     def _seesTarget(self, pos, tpos, target):
         """Есть ли прямая видимость до цели (статика: дома, стены). Кэш 0.5 с на цель."""
@@ -1623,13 +1743,110 @@ class BotAI(object):
         ok = True
         try:
             sid = BigWorld.player().spaceID
-            r = BigWorld.wg_collideSegment(sid, Math.Vector3(pos.x, pos.y + 2.2, pos.z),
-                                           Math.Vector3(tpos.x, tpos.y + 1.8, tpos.z), 0)
-            ok = r is None or r[0] is None
+            ok = self._rayClear(sid, Math.Vector3(pos.x, pos.y + 2.2, pos.z),
+                                Math.Vector3(tpos.x, tpos.y + 1.8, tpos.z))
         except Exception:
             ok = True
         self._losCache = (now, ok, target.id)
         return ok
+
+    def _findRetreatCover(self, pos, target, now):
+        """Ищет ближайшую свободную точку, закрытую от выбранной угрозы."""
+        try:
+            tpos = _posOf(target)
+            spaceID = self._vehicle.spaceID
+        except Exception:
+            return None
+        dx, dz = pos.x - tpos.x, pos.z - tpos.z
+        currentDist = math.hypot(dx, dz)
+        if currentDist < 1.0:
+            return None
+
+        threatRay = Math.Vector3(tpos.x, tpos.y + 1.8, tpos.z)
+        currentRay = Math.Vector3(pos.x, pos.y + 2.2, pos.z)
+        if not self._rayClear(spaceID, currentRay, threatRay):
+            return (pos.x, pos.z)            # уже за укрытием - остаёмся там, не выезжаем под огонь
+
+        away = math.atan2(dx, dz)
+        bbox = _AXIS.get('bbox')
+        nav = off_nav.NAV
+        base = _AXIS.get('ally' if self.team == TEAM_ALLY else 'enemy')
+        currentBaseDist = math.hypot(base[0] - pos.x, base[1] - pos.z) if base else 0.0
+        best = None
+
+        for radius in BOT_RETREAT_COVER_RADII:
+            for offset in BOT_RETREAT_COVER_ANGLES:
+                angle = away + offset
+                x = pos.x + math.sin(angle) * radius
+                z = pos.z + math.cos(angle) * radius
+                if bbox and (x < bbox[0] + 20.0 or x > bbox[2] - 20.0 or
+                             z < bbox[1] + 20.0 or z > bbox[3] - 20.0):
+                    continue
+                targetDist = math.hypot(x - tpos.x, z - tpos.z)
+                if targetDist < currentDist + BOT_RETREAT_COVER_MIN_GAIN:
+                    continue
+                if nav.ready:
+                    try:
+                        ci, cj = nav.cellOf(x, z)
+                        if nav.blocked(ci, cj, now):
+                            continue
+                    except Exception:
+                        pass
+
+                end = Math.Vector3(x, pos.y + 2.2, z)
+                if self._rayClear(spaceID, threatRay, end):
+                    continue                 # точка всё ещё видна противнику
+
+                moveDist = math.hypot(x - pos.x, z - pos.z)
+                baseGain = 0.0
+                if base:
+                    baseGain = currentBaseDist - math.hypot(base[0] - x, base[1] - z)
+                score = (targetDist - currentDist) - moveDist * 0.8 + baseGain * 0.25
+                if best is None or score > best[0]:
+                    best = (score, (x, z))
+        return best[1] if best is not None else None
+
+    def _scheduleTDRelocation(self, pos, target, tpos, dist, near, far, now):
+        """После выстрела ПТ-САУ ищет соседнюю открытую огневую точку и не мечется слишком часто."""
+        if self.role != 'td' or now < self._tdRelocateAt:
+            return
+        self._tdRelocateAt = now + random.uniform(*BOT_TD_RELOCATE_INTERVAL)
+        dx, dz = pos.x - tpos.x, pos.z - tpos.z
+        if math.hypot(dx, dz) < 1.0:
+            return
+        try:
+            spaceID = self._vehicle.spaceID
+        except Exception:
+            return
+
+        radius = max(near + 8.0, min(far - 8.0, dist))
+        baseAngle = math.atan2(dx, dz)
+        threatRay = Math.Vector3(tpos.x, tpos.y + 1.8, tpos.z)
+        bbox = _AXIS.get('bbox')
+        nav = off_nav.NAV
+        for turn in (self._tdRelocateSign, -self._tdRelocateSign):
+            angle = baseAngle + turn * random.uniform(*BOT_TD_RELOCATE_ANGLE)
+            x = tpos.x + math.sin(angle) * radius
+            z = tpos.z + math.cos(angle) * radius
+            if bbox and (x < bbox[0] + 20.0 or x > bbox[2] - 20.0 or
+                         z < bbox[1] + 20.0 or z > bbox[3] - 20.0):
+                continue
+            if nav.ready:
+                try:
+                    ci, cj = nav.cellOf(x, z)
+                    if nav.blocked(ci, cj, now):
+                        continue
+                except Exception:
+                    pass
+            end = Math.Vector3(x, pos.y + 2.2, z)
+            if not self._rayClear(spaceID, threatRay, end):
+                continue
+            self._tdRelocateGoal = (x, z)
+            self._tdRelocateTargetID = target.id
+            self._tdRelocateUntil = now + BOT_TD_RELOCATE_DURATION
+            self._tdRelocateSign = -turn
+            self._navForce = True
+            return
 
     def _navNext(self, pos, gx, gz, now, direct=25.0):
         """Следующая точка пути к цели в обход домов/воды; при близкой цели или без карты - сама цель."""
@@ -1678,6 +1895,139 @@ class BotAI(object):
             return v
         return None
 
+    def _combatRange(self):
+        """Желаемая дистанция стрельбы с учётом класса техники."""
+        return BOT_ROLE_RANGE.get(self.role, (BOT_MIN_RANGE, BOT_MAX_RANGE))
+
+    def _flankBias(self):
+        """Лёгкие обходят шире, тяжёлые держатся ближе к прямому направлению атаки."""
+        bias = getattr(self, '_flank', None)
+        if bias is None:
+            low, high = ROLE_FLANK_RANGE.get(self.role, ROLE_FLANK_RANGE['medium'])
+            bias = random.choice((-1.0, 1.0)) * random.uniform(low, high)
+            self._flank = bias
+        return bias
+
+    def _tacticalPoint(self, pos, target, tpos, near, far):
+        """Стабильная точка подхода по классовой дистанции и флангу выбранной цели."""
+        if self._tacticalTargetID != target.id or self._tacticalAngle is None:
+            dx, dz = pos.x - tpos.x, pos.z - tpos.z
+            if math.hypot(dx, dz) < 1.0:
+                angle = getattr(self._physics, 'yaw', 0.0)
+            else:
+                angle = math.atan2(dx, dz)
+            self._tacticalAngle = angle + self._flankBias()
+            self._tacticalTargetID = target.id
+            self._repositionAt = 0.0
+        radius = (near + far) * 0.5
+        angle = self._tacticalAngle
+        return tpos.x + math.sin(angle) * radius, tpos.z + math.cos(angle) * radius
+
+    def _lightOrbitMovement(self, dt, pos, target, tpos, dist, desiredYaw, near, far, now):
+        """Лёгкий танк держит дистанцию и периодически меняет угол обстрела."""
+        if self._orbitTargetID != target.id:
+            self._orbitTargetID = target.id
+            self._orbitSign = random.choice((-1.0, 1.0))
+            self._orbitUntil = 0.0
+        if self._tacticalTargetID != target.id or self._tacticalAngle is None:
+            self._tacticalPoint(pos, target, tpos, near, far)
+        if now >= self._orbitUntil:
+            step = random.uniform(*BOT_LIGHT_ORBIT_STEP)
+            self._tacticalAngle = _wrap(self._tacticalAngle + self._orbitSign * step)
+            self._orbitUntil = now + random.uniform(*BOT_LIGHT_ORBIT_INTERVAL)
+            self._navForce = True
+
+        gx, gz = self._tacticalPoint(pos, target, tpos, near, far)
+        nx, nz = self._navNext(pos, gx, gz, now, 8.0)
+        goalDist = math.hypot(nx - pos.x, nz - pos.z)
+        if goalDist > 6.0:
+            return self._steer(dt, pos, goalDist, math.atan2(nx - pos.x, nz - pos.z), 1.0, 6.0)
+        return self._steer(dt, pos, dist, desiredYaw, near, far)
+
+    def _combatMovement(self, dt, pos, target, tpos, dist, desiredYaw, near, far, visible, now):
+        """Идёт к классовой боевой позиции, а не напрямик в противника."""
+        if self.role == 'td' and self._tdRelocateGoal is not None:
+            if (self._tdRelocateTargetID != target.id or now >= self._tdRelocateUntil or
+                    dist < near or dist > far * 1.25):
+                self._tdRelocateGoal = None
+            else:
+                gx, gz = self._tdRelocateGoal
+                nx, nz = self._navNext(pos, gx, gz, now, 8.0)
+                goalDist = math.hypot(nx - pos.x, nz - pos.z)
+                if goalDist > 6.0:
+                    return self._steer(dt, pos, goalDist, math.atan2(nx - pos.x, nz - pos.z), 1.0, 6.0)
+                self._tdRelocateGoal = None
+
+        if dist < near:
+            return self._steer(dt, pos, dist, desiredYaw, near, far)
+
+        if self.role == 'light' and visible and dist <= far * 1.05:
+            return self._lightOrbitMovement(dt, pos, target, tpos, dist, desiredYaw, near, far, now)
+
+        if dist > far * 1.05 or not visible:
+            gx, gz = self._tacticalPoint(pos, target, tpos, near, far)
+            nx, nz = self._navNext(pos, gx, gz, now, 8.0)
+            goalDist = math.hypot(nx - pos.x, nz - pos.z)
+
+            # Если выбранная точка закрыта домом, через паузу пробуем обойти с другой стороны.
+            if not visible and goalDist <= 8.0 and now >= self._repositionAt:
+                self._flank = -self._flankBias()
+                # Заново выбрать точку со второй стороны. _tacticalPoint сбросит старый таймер,
+                # поэтому ставим следующий срок уже после её вызова.
+                self._tacticalTargetID = None
+                gx, gz = self._tacticalPoint(pos, target, tpos, near, far)
+                self._repositionAt = now + BOT_TACTICAL_REPOSITION_INTERVAL
+                self._navForce = True
+                nx, nz = self._navNext(pos, gx, gz, now, 8.0)
+                goalDist = math.hypot(nx - pos.x, nz - pos.z)
+
+            if goalDist > 6.0:
+                goYaw = math.atan2(nx - pos.x, nz - pos.z)
+                return self._steer(dt, pos, goalDist, goYaw, 1.0, 6.0)
+            if not visible:
+                return 0
+
+        # Тяжёлый танк слегка поворачивает корпус к цели, оставляя орудию отдельную наводку.
+        if self.role == 'heavy':
+            desiredYaw = _wrap(desiredYaw + (0.18 if self.botID % 2 else -0.18))
+        return self._steer(dt, pos, dist, desiredYaw, near, far)
+
+    def _targetScore(self, target, pos):
+        """Оценка цели: учитывает здоровье, помощь союзнику под огнём и угрозу своей базе."""
+        p = _posOf(target)
+        score = math.hypot(p.x - pos.x, p.z - pos.z)
+        try:
+            maxHP = max(1.0, float(target.typeDescriptor.maxHealth))
+            hp = max(0.0, min(1.0, float(target.health) / maxHP))
+        except Exception:
+            hp = 1.0
+        score += hp * BOT_TARGET_HP_WEIGHT
+
+        if target.id == self._targetID:
+            score -= BOT_TARGET_STICKY_BONUS
+
+        # Команда помогает добивать выбранную цель и отвечает врагу, который недавно ранил союзника.
+        focus = 0
+        threatened = 0
+        now = BigWorld.time()
+        for ally in _BOTS.values():
+            if ally is self or not ally.alive or ally.team != self.team:
+                continue
+            if ally._targetID == target.id:
+                focus += 1
+            if ally._threatID == target.id and now < ally._threatUntil:
+                threatened += 1
+        score -= min(BOT_TARGET_FOCUS_CAP, focus * BOT_TARGET_FOCUS_BONUS)
+        score -= min(BOT_TARGET_ALLY_THREAT_CAP, threatened * BOT_TARGET_ALLY_THREAT_BONUS)
+
+        # Враг у своей базы становится важнее: боты не игнорируют защиту точки.
+        base = _AXIS.get('ally' if self.team == TEAM_ALLY else 'enemy')
+        if base:
+            baseDist = math.hypot(p.x - base[0], p.z - base[1])
+            if baseDist < BOT_TARGET_BASE_DEFENSE_RANGE:
+                score -= (BOT_TARGET_BASE_DEFENSE_RANGE - baseDist) * BOT_TARGET_BASE_DEFENSE_WEIGHT
+        return score
+
     def _pickTarget(self, pos, dt):
         self._retarget -= dt
         # Получив урон, бот немедленно отвечает стрелявшему, даже если тот ещё далеко от маршрута.
@@ -1718,10 +2068,7 @@ class BotAI(object):
             self._targetID = best.id
             return best
         if cands:
-            best = min(cands, key=dist)
-            if cur is not None and any(c.id == cur.id for c in cands):
-                if dist(cur) <= dist(best) * 1.3 + 15.0:
-                    best = cur
+            best = min(cands, key=lambda candidate: self._targetScore(candidate, pos))
             self._targetID = best.id
             return best
 
@@ -1785,6 +2132,8 @@ class BotAI(object):
             if math.hypot(tp0.x - pos.x, tp0.z - pos.z) > 90.0:
                 target = None                    # захватчик не гоняется за далёкими целями - ему на базу
         if target is None:
+            if self.role == 'td':
+                self._tdRelocateGoal = None
             if self.capturer and not self._retreating(veh, pos, now=BigWorld.time()):
                 cg = self._captureGoal(pos)
                 if cg is not None:
@@ -1808,12 +2157,17 @@ class BotAI(object):
                 return
             if self._retreating(veh, pos, now=BigWorld.time()):
                 base = _AXIS.get('ally' if self.team == TEAM_ALLY else 'enemy')
-                if base:
-                    nx, nz = self._navNext(pos, base[0], base[1], BigWorld.time(), 30.0)
+                goal = self._retreatGoal or base
+                if goal:
+                    nx, nz = self._navNext(pos, goal[0], goal[1], BigWorld.time(), 30.0)
                     turret.setTarget(None)
                     self._aimPoint = None
-                    phys.setFlags(self._steer(dt, pos, max(25.0, math.hypot(base[0] - pos.x, base[1] - pos.z)),
-                                              math.atan2(nx - pos.x, nz - pos.z), 20.0, 40.0))
+                    goalDist = math.hypot(goal[0] - pos.x, goal[1] - pos.z)
+                    if goalDist <= 6.0:
+                        phys.setFlags(0)
+                    else:
+                        phys.setFlags(self._steer(dt, pos, goalDist,
+                                                  math.atan2(nx - pos.x, nz - pos.z), 3.0, 6.0))
                     return
             wp = self._waypoint(pos)
             if wp is not None:
@@ -1835,7 +2189,8 @@ class BotAI(object):
                 dxs, dzs = nx - pos.x, nz - pos.z
                 turret.setTarget(None)
                 self._aimPoint = None
-                phys.setFlags(self._steer(dt, pos, realD, math.atan2(dxs, dzs), BOT_MIN_RANGE, BOT_MAX_RANGE))
+                near, far = self._combatRange()
+                phys.setFlags(self._steer(dt, pos, realD, math.atan2(dxs, dzs), near, far))
                 return
             phys.setFlags(0)
             turret.setTarget(None)
@@ -1848,12 +2203,16 @@ class BotAI(object):
         dist = math.hypot(dx, dz)
         desiredYaw = math.atan2(dx, dz)
 
-        # башня
-        if self._aimPoint is None:
+        # башня: упреждаем движущуюся цель и заново выбираем разброс при смене противника.
+        if self._aimPoint is None or self._aimTargetID != target.id:
+            turret.setTarget(None)  # новая цель: дать башне полный интервал на наведение
+            self._aimTargetID = target.id
             self._rollAimPoint(tpos, dist)
-        else:
-            self._aimPoint = Math.Vector3(
-                tpos.x + self._aimOffset[0], tpos.y + 1.3 + self._aimOffset[1], tpos.z + self._aimOffset[2])
+        self._aimLead = self._aimLeadOffset(veh, target, tpos, dist)
+        self._aimPoint = Math.Vector3(
+            tpos.x + self._aimLead[0] + self._aimOffset[0],
+            tpos.y + 1.3 + self._aimOffset[1],
+            tpos.z + self._aimLead[1] + self._aimOffset[2])
         turret.setTarget(self._aimPoint)
 
         # движение
@@ -1862,7 +2221,7 @@ class BotAI(object):
         elif self.role == 'spg':
             near, far = BOT_SPG_MIN_RANGE, BOT_SPG_RANGE * 0.92     # держит дистанцию, на месте не мечется
         else:
-            near, far = BOT_MIN_RANGE, BOT_MAX_RANGE
+            near, far = self._combatRange()
         if BOT_DEBUG_NO_MOVE:
             phys.setFlags(0)
         elif self.role == 'spg' and self._spgHome is not None:
@@ -1874,39 +2233,27 @@ class BotAI(object):
                 phys.setFlags(self._steer(dt, pos, homeDist, math.atan2(hdx, hdz), 3.0, BOT_SPG_HOME_RADIUS))
             else:
                 phys.setFlags(0)
-        elif self._retreating(veh, pos, now=BigWorld.time()):
-            # раненый бот отходит к своей базе, продолжая отстреливаться, если цель видна
+        elif self._retreating(veh, pos, now=BigWorld.time(), target=target):
+            # раненый бот уходит за укрытие или к своей базе, продолжая стрелять по видимой цели
             self._seesTarget(pos, tpos, target)            # обновляем видимость цели: отходя, бот отстреливается
             base = _AXIS.get('ally' if self.team == TEAM_ALLY else 'enemy')
-            bx, bz = base if base else (pos.x - dx, pos.z - dz)
-            nx, nz = self._navNext(pos, bx, bz, BigWorld.time(), 30.0)
-            phys.setFlags(self._steer(dt, pos, max(25.0, math.hypot(bx - pos.x, bz - pos.z)),
-                                      math.atan2(nx - pos.x, nz - pos.z), 20.0, 40.0))
+            goal = self._retreatGoal or base or (pos.x - dx, pos.z - dz)
+            nx, nz = self._navNext(pos, goal[0], goal[1], BigWorld.time(), 30.0)
+            goalDist = math.hypot(goal[0] - pos.x, goal[1] - pos.z)
+            if goalDist <= 6.0:
+                phys.setFlags(0)
+            else:
+                phys.setFlags(self._steer(dt, pos, goalDist,
+                                          math.atan2(nx - pos.x, nz - pos.z), 3.0, 6.0))
         else:
-            yawGo = desiredYaw
-            if not self._follow and self.role != 'spg' and not self._seesTarget(pos, tpos, target):
-                # цель за стеной/домом: не стоим и не целимся сквозь стену, а идём к ней в обход (по карте проходимости)
-                nx, nz = self._navNext(pos, tpos.x, tpos.z, BigWorld.time(), 8.0)
-                yawGo = math.atan2(nx - pos.x, nz - pos.z)
-                phys.setFlags(self._steer(dt, pos, max(dist, near + 20.0), yawGo, near, near + 8.0))
-            elif dist > far * 1.05 and not self._follow and self.role != 'spg':
-                # заходим к цели каждый со своей стороны (фланг), а не толпой по прямой
-                fl = getattr(self, '_flank', None)
-                if fl is None:
-                    fl = self._flank = random.choice((-1.0, 1.0)) * random.uniform(0.35, 1.3)
-                th = math.atan2(pos.x - tpos.x, pos.z - tpos.z) + fl * min(1.0, (dist - far) / 120.0)
-                R = max(near + 10.0, far * 0.75)
-                ax, az = tpos.x + math.sin(th) * R, tpos.z + math.cos(th) * R
-                if dist > 70.0:
-                    nx, nz = self._navNext(pos, ax, az, BigWorld.time())
-                else:
-                    nx, nz = ax, az
-                yawGo = math.atan2(nx - pos.x, nz - pos.z)
-            elif dist > 70.0 and dist > far:
-                nx, nz = self._navNext(pos, tpos.x, tpos.z, BigWorld.time())
-                yawGo = math.atan2(nx - pos.x, nz - pos.z)
-            if not (not self._follow and self.role != 'spg' and not self._losCache[1]):
-                phys.setFlags(self._steer(dt, pos, dist, yawGo, near, far))
+            if self.role == 'spg':
+                phys.setFlags(0)
+            elif self._follow:
+                phys.setFlags(self._steer(dt, pos, dist, desiredYaw, near, far))
+            else:
+                visible = self._seesTarget(pos, tpos, target)
+                phys.setFlags(self._combatMovement(
+                    dt, pos, target, tpos, dist, desiredYaw, near, far, visible, BigWorld.time()))
 
         if not self._thinkLogged:
             self._thinkLogged = True
@@ -1931,8 +2278,10 @@ class BotAI(object):
                     fired = self._fireIndirect(veh, target, dist)
                     self._shootCd = random.uniform(1.2, 2.4) if fired else random.uniform(0.4, 0.8)
             elif self._shootCd <= 0.0 and dist <= BOT_SHOOT_DISTANCE and turret.isAimed() and self._losCache[1]:
-                if self._fire(veh, dist):
+                if self._fire(veh, dist, target, self._aimLead):
                     self._rollAimPoint(tpos, dist)
+                    if self.role == 'td':
+                        self._scheduleTDRelocation(pos, target, tpos, dist, near, far, BigWorld.time())
                 self._shootCd = random.uniform(0.2, 0.6)
 
     def onAttacked(self, shooterID):
@@ -2035,6 +2384,59 @@ class BotAI(object):
         self._aimOffset = (random.uniform(-r, r), random.uniform(-0.3, 0.3), random.uniform(-r, r))
         self._aimPoint = Math.Vector3(
             tpos.x + self._aimOffset[0], tpos.y + 1.3 + self._aimOffset[1], tpos.z + self._aimOffset[2])
+
+    def _targetVelocity(self, target, tpos, now):
+        """Скорость цели: точная скорость локальной физики, иначе сглаженная разница позиций."""
+        try:
+            sp = off_battle._simplePhysicsByVehID.get(target.id)
+            if sp is not None and getattr(sp, 'pos', None) is not None:
+                speed = float(getattr(sp, '_curSpeed', 0.0))
+                yaw = float(getattr(sp, 'yaw', 0.0))
+                vx, vz = math.sin(yaw) * speed, math.cos(yaw) * speed
+                magnitude = math.hypot(vx, vz)
+                if magnitude > BOT_TARGET_SPEED_MAX:
+                    scale = BOT_TARGET_SPEED_MAX / magnitude
+                    vx, vz = vx * scale, vz * scale
+                self._targetMotion = (target.id, now, float(tpos.x), float(tpos.z), vx, vz)
+                return vx, vz
+        except Exception:
+            pass
+
+        prev = self._targetMotion
+        vx = vz = 0.0
+        if prev is not None and prev[0] == target.id:
+            elapsed = now - prev[1]
+            if 0.05 <= elapsed <= 1.0:
+                vx = (float(tpos.x) - prev[2]) / elapsed
+                vz = (float(tpos.z) - prev[3]) / elapsed
+                magnitude = math.hypot(vx, vz)
+                if magnitude > BOT_TARGET_SPEED_MAX:
+                    scale = BOT_TARGET_SPEED_MAX / magnitude
+                    vx, vz = vx * scale, vz * scale
+                # Сглаживаем шум сетевой/модельной позиции, сохраняя повороты цели.
+                vx = vx * 0.65 + prev[4] * 0.35
+                vz = vz * 0.65 + prev[5] * 0.35
+        self._targetMotion = (target.id, now, float(tpos.x), float(tpos.z), vx, vz)
+        return vx, vz
+
+    def _aimLeadOffset(self, vehicle, target, tpos, dist):
+        """Небольшое упреждение по скорости цели и скорости текущего снаряда."""
+        vx, vz = self._targetVelocity(target, tpos, BigWorld.time())
+        shellSpeed = 800.0
+        try:
+            gun = vehicle.typeDescriptor.gun
+            shot = gun['shots'][int(vehicle.typeDescriptor.activeGunShotIndex)]
+            shellSpeed = max(1.0, float(shot['speed']))
+        except Exception:
+            pass
+        flight = min(BOT_AIM_LEAD_MAX_TIME, max(0.0, float(dist) / shellSpeed))
+        leadX, leadZ = vx * flight, vz * flight
+        leadDist = math.hypot(leadX, leadZ)
+        if leadDist > BOT_AIM_LEAD_MAX_DISTANCE:
+            scale = BOT_AIM_LEAD_MAX_DISTANCE / leadDist
+            leadX, leadZ = leadX * scale, leadZ * scale
+            leadDist = BOT_AIM_LEAD_MAX_DISTANCE
+        return leadX, leadZ, leadDist
 
     # --------------------------------------------------------
     # Movement
@@ -2621,8 +3023,8 @@ class BotAI(object):
         phys.setFlags(self._steer(dt, pos, 100.0, math.atan2(nx - pos.x, nz - pos.z), 20.0, 40.0))
         return True
 
-    def _fire(self, vehicle, dist):
-        """Выстрел бота. Возвращает True, если выстрел произошёл."""
+    def _fire(self, vehicle, dist, target=None, lead=None):
+        """Выстрел бота. Упреждение засчитывается только по выбранной цели в допуске круга сведения."""
         if vehicle is None or not off_shooting._canShoot(vehicle):
             return False
 
@@ -2634,6 +3036,18 @@ class BotAI(object):
         end = origin + direction * maxDistance
 
         hit = off_shooting._findHitVehicle(vehicle, origin, end)
+        # Луч по упреждённой точке может пройти чуть впереди текущей модели цели.
+        # Используем штатный forgiving-hit радиус, но только для цели, по которой бот целился.
+        if hit is None and target is not None and lead is not None and lead[2] > 0.25 \
+                and getattr(off_shooting, 'FORGIVE_AIM', True):
+            try:
+                dispAngle = math.atan2(float(lead[2]), max(1.0, float(dist)))
+                leadHit = off_shooting._findHitVehicleForgiving(
+                    vehicle, origin, direction, maxDistance, dispAngle)
+                if leadHit is not None and leadHit[0].id == target.id:
+                    hit = leadHit
+            except Exception:
+                LOG_CURRENT_EXCEPTION()
         staticHit = off_shooting._findStaticHit(vehicle, origin, end)
 
         hitTarget = None
@@ -2759,11 +3173,10 @@ def _completeBotSpawn(avatar, vehicle, rec):
         _registerArenaVehicle(vehicle, rec)     # на случай, если до старта визуала не успели (идемпотентно)
 
         ai = BotAI(vehicle, botID, rec['team'], _vehicleRole(rec['compDescr']))
-        if ai.role in ('light', 'medium', 'heavy') and _CAPTURERS.get(rec['team'], 0) < BOT_CAPTURERS_PER_TEAM \
-                and random.random() < BOT_CAPTURER_CHANCE:
-            ai.capturer = True                       # этот бот едет захватывать базу противника
+        if ai.role == 'light' and _CAPTURERS.get(rec['team'], 0) < BOT_CAPTURERS_PER_TEAM:
+            ai.capturer = True                       # лёгкий танк разведывает и один раз помогает с захватом
             _CAPTURERS[rec['team']] = _CAPTURERS.get(rec['team'], 0) + 1
-            LOG_DEBUG('[BOTS] bot %s (team %s) is a base capturer' % (botID, rec['team']))
+            LOG_DEBUG('[BOTS] light bot %s (team %s) is the base scout' % (botID, rec['team']))
         _BOTS[botID] = ai
         ai.start()
         off_spotting.onBotReady(vehicle)
