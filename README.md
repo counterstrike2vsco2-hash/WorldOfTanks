@@ -1,31 +1,6 @@
-# WoT 0.9.0 — Браузерная версия 🎮
+# WoToffline0.9.0
+This project is a non-commercial modification for the legacy version of World of Tanks (0.9.0), created solely for educational and research purposes. The author of this project makes no claim to the intellectual property of Wargaming.net, Lesta Games, or any other respective owners. All rights to the "World of Tanks" trademark, game assets, and binaries belong to their original creators.
+<img width="1920" height="1057" alt="shot_017" src="https://github.com/user-attachments/assets/271daa81-ae1e-404a-97ec-ce9e36452c14" />
 
-Фанатские «танчики» в духе легендарной версии 0.9.0 — прямо в браузере,
-без скачиваний и установки. Вдохновлено проектом [WoToffline0.9.0](https://github.com/MrFFT/WoToffline0.9.0).
 
-## ▶️ Играть
 
-Открой GitHub Pages этого репозитория — и жми **«В БОЙ!»**
-
-## 🛠 Что внутри
-
-- **Ангар** в стиле старого клиента с выбором танка
-- 4 машины: **МС-1** (ЛТ), **Т-34-85** (СТ), **КВ-2** (ТТ) и **ИСУ-152** (ПТ-САУ, башни нет — целься корпусом!)
-- Бой **5 на 5 с ботами**: ИИ патрулирует, засекает, держит дистанцию и стреляет
-- Снаряды с разбросом, рикошеты, подрыв БК на больших калибрах 💥
-- Снайперский прицел (ПКМ), миникарта, лента фрагов, таймер боя
-- Звуки синтезируются на лету через WebAudio — ни одного файла
-
-## 🎮 Управление
-
-| Клавиша | Действие |
-|---|---|
-| `W A S D` / стрелки | Движение корпуса |
-| Мышь | Поворот башни |
-| ЛКМ | Огонь |
-| ПКМ (зажать) | Снайперский прицел |
-
-## 🚀 Деплой
-
-Статический сайт (`index.html` + `style.css` + `game.js`), раздаётся через
-GitHub Pages из корня ветки `main`.
